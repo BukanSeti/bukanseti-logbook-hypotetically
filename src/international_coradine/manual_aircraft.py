@@ -41,7 +41,7 @@ def parse_aircraft_spec(spec: str) -> ManualAircraftRecord:
         )
     registration_text, aircraft_type_text = spec.split("=", 1)
     registration = normalize_registration(registration_text)
-    aircraft_type = standardize_aircraft_type(aircraft_type_text)
+    aircraft_type = standardize_aircraft_type(aircraft_type_text, strict=True)
     if not registration or not aircraft_type:
         raise ValueError(
             f"Invalid aircraft input {spec!r}. Registration and ICAO aircraft type "
@@ -60,11 +60,17 @@ def normalize_registration(value: str) -> str:
     return text
 
 
-def standardize_aircraft_type(value: str | None) -> str:
+def standardize_aircraft_type(
+    value: str | None,
+    *,
+    strict: bool = False,
+) -> str:
     """Return only an ICAO aircraft type designator.
 
     Common Boeing 737 marketing/model names are accepted as input, but the stored
-    value is always the corresponding ICAO designator.
+    value is always the corresponding ICAO designator. Unclear OCR/source values
+    return an empty string so they remain unverified. Explicit manual input uses
+    ``strict=True`` and raises instead.
     """
     if not value:
         return ""
@@ -113,10 +119,12 @@ def standardize_aircraft_type(value: str | None) -> str:
     if is_icao_aircraft_type(original):
         return original
 
-    raise ValueError(
-        f"Aircraft type {value!r} is not a recognized ICAO aircraft type designator. "
-        "Use a code such as B738, B739, or B38M."
-    )
+    if strict:
+        raise ValueError(
+            f"Aircraft type {value!r} is not a recognized ICAO aircraft type "
+            "designator. Use a code such as B738, B739, or B38M."
+        )
+    return ""
 
 
 def is_icao_aircraft_type(value: str) -> bool:
