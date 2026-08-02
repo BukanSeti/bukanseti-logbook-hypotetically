@@ -1,0 +1,23 @@
+project_name: INTERNATIONAL CORADINE
+revision: 3
+airline:
+  name: Lion Air
+  accepted_names: ["Lion Air", "LION AIR"]
+  accepted_iata_prefixes: ["JT"]
+  accepted_icao_prefixes: ["LNI"]
+  reject_other_airlines: true
+processing:
+  require_start_processing_flag: true
+  rows_per_print_page: 24
+  default_turnaround_minutes: 45
+  strict_pdf_from_excel: true
+  allow_reportlab_fallback: false
+  leave_missing_approach_unverified: true
+references:
+  crew_sheet_url: "https://docs.google.com/spreadsheets/d/1gpPtVN9LYdg9EptvudA87CH67c6SP7IDE7bQUmYi7yc/edit?usp=drivesdk"
+  aircraft_sheet_url: "https://docs.google.com/spreadsheets/d/1TzgCM3_SwgyrcDdfN_K4Asm0oxBj7oATRyEaXcBTH60/edit?usp=drivesdk"
+  crew_cache: ".cache/Lion_Air_Crew.xlsx"
+  aircraft_cache: ".cache/Lion_Air_Airplane.xlsx"
+output:
+  workbook_name: International_Coradine.xlsx
+  pdf_name: International_Coradine.pdf

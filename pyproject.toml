@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "international-coradine-lion-air"
+version = "0.1.0"
+description = "Lion Air-only International Coradine Rev 3 photo-to-Excel/PDF reconstruction pipeline"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "BukanSeti"}]
+dependencies = [
+  "openpyxl>=3.1.5",
+  "pydantic>=2.10",
+  "PyYAML>=6.0",
+  "requests>=2.32",
+  "openai>=1.60",
+  "reportlab>=4.2",
+  "PyMuPDF>=1.25",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "ruff>=0.9"]
+
+[project.scripts]
+coradine = "international_coradine.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
