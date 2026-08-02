@@ -25,7 +25,16 @@ The repo can receive only:
 The API has no bulk-list or bank-download endpoint. ATPL, rank, employment status,
 operator details, validation status, and other fields are not returned.
 
-Server setup is documented in [`docs/PRIVATE_REFERENCE_API.md`](docs/PRIVATE_REFERENCE_API.md).
+Server design is documented in [`docs/PRIVATE_REFERENCE_API.md`](docs/PRIVATE_REFERENCE_API.md).
+
+## Deploy the private API
+
+The root-level [`render.yaml`](render.yaml) defines a Docker web service for Render with a
+Singapore region, health check, CI-gated auto-deployment, and secret placeholders. No Google
+credential, user token, Crew Bank row, or Aircraft Bank row is committed to the repository.
+
+Follow [`docs/RENDER_DEPLOYMENT.md`](docs/RENDER_DEPLOYMENT.md) to connect the repository,
+enter the server-only secrets, issue one token per user, and verify the deployed API.
 
 ## Install the logbook client
 
