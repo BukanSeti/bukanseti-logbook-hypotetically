@@ -37,42 +37,70 @@ class StructuredFileExtractor:
         if path.suffix.lower() == ".csv":
             with path.open(newline="", encoding="utf-8-sig") as handle:
                 rows = list(csv.DictReader(handle))
-            return ExtractionBatch(entries=[self._from_row(row, path.name, idx + 2) for idx, row in enumerate(rows)])
+            return ExtractionBatch(
+                entries=[
+                    self._from_row(row, path.name, index + 2)
+                    for index, row in enumerate(rows)
+                ]
+            )
         if path.suffix.lower() in {".xlsx", ".xlsm"}:
             return self._from_xlsx(path)
         raise ValueError(f"Unsupported structured source: {path}")
 
     def _from_xlsx(self, path: Path) -> ExtractionBatch:
-        wb = load_workbook(path, data_only=True, read_only=False)
+        workbook = load_workbook(path, data_only=True, read_only=False)
         entries: list[RawEntry] = []
-        for ws in wb.worksheets:
-            header_row, mapping = self._detect_header(ws)
+        for worksheet in workbook.worksheets:
+            header_row, mapping = self._detect_header(worksheet)
             if not mapping:
                 continue
-            for row_idx in range(header_row + 1, ws.max_row + 1):
-                row = {field: ws.cell(row_idx, col_idx).value for field, col_idx in mapping.items()}
+            for row_index in range(header_row + 1, worksheet.max_row + 1):
+                row = {
+                    field: worksheet.cell(row_index, column_index).value
+                    for field, column_index in mapping.items()
+                }
                 if not any(value not in (None, "") for value in row.values()):
                     continue
-                entries.append(self._from_row(row, path.name, f"{ws.title}!{row_idx}"))
+                entries.append(
+                    self._from_row(
+                        row,
+                        path.name,
+                        f"{worksheet.title}!{row_index}",
+                    )
+                )
         return ExtractionBatch(entries=entries)
 
-    def _detect_header(self, ws) -> tuple[int, dict[str, int]]:
-        for row_idx in range(1, min(ws.max_row, 30) + 1):
+    def _detect_header(self, worksheet) -> tuple[int, dict[str, int]]:
+        for row_index in range(1, min(worksheet.max_row, 30) + 1):
             mapping: dict[str, int] = {}
-            for col_idx in range(1, ws.max_column + 1):
-                value = str(ws.cell(row_idx, col_idx).value or "").strip().casefold()
+            for column_index in range(1, worksheet.max_column + 1):
+                value = str(
+                    worksheet.cell(row_index, column_index).value or ""
+                ).strip().casefold()
                 for field, aliases in HEADER_ALIASES.items():
                     if value in aliases:
-                        mapping[field] = col_idx
+                        mapping[field] = column_index
             if {"date", "route"}.issubset(mapping):
-                return row_idx, mapping
+                return row_index, mapping
         return 0, {}
 
-    def _from_row(self, row: dict, source_file: str, row_number: object) -> RawEntry:
+    def _from_row(
+        self,
+        row: dict,
+        source_file: str,
+        row_number: object,
+    ) -> RawEntry:
         normalized: dict[str, object] = {}
         for key, value in row.items():
-            key_cf = str(key).strip().casefold()
-            target = next((field for field, aliases in HEADER_ALIASES.items() if key_cf in aliases or key_cf == field), None)
+            key_casefold = str(key).strip().casefold()
+            target = next(
+                (
+                    field
+                    for field, aliases in HEADER_ALIASES.items()
+                    if key_casefold in aliases or key_casefold == field
+                ),
+                None,
+            )
             if target:
                 normalized[target] = value
         return RawEntry(
@@ -109,10 +137,16 @@ class OpenAIVisionExtractor:
             {
                 "type": "input_text",
                 "text": (
-                    "Extract Lion Air pilot-logbook entries from this source. Preserve readable values exactly. "
-                    "Do not guess unreadable fields. Return route_sequence as ordered airport codes. "
-                    "Use HH:MM for clock and duration fields. Mark unreadable field names in unreadable_fields. "
-                    "Do not process another airline."
+                    "Extract Lion Air pilot-logbook entries from this source. Preserve "
+                    "readable values and do not guess unreadable fields. Return "
+                    "aircraft_type as an ICAO aircraft type designator only when it is "
+                    "confidently identifiable: use B738 for Boeing 737-800/800NG, B739 "
+                    "for Boeing 737-900ER, and B38M for Boeing 737 MAX 8/737-8. Return "
+                    "route_sequence as ordered airport codes; prefer four-letter ICAO "
+                    "codes when identifiable, but preserve a clearly readable IATA code "
+                    "rather than guessing because the pipeline converts known IATA codes "
+                    "to ICAO. Use HH:MM for clock and duration fields. Mark unreadable "
+                    "field names in unreadable_fields. Do not process another airline."
                 ),
             },
             self._file_content(path),
@@ -171,9 +205,14 @@ def _as_date(value: object):
     if hasattr(value, "date"):
         return value.date()
     text = str(value).strip()
-    for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d %b %Y"):
+    for date_format in (
+        "%Y-%m-%d",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%d %b %Y",
+    ):
         try:
-            return datetime.strptime(text, fmt).date()
+            return datetime.strptime(text, date_format).date()
         except ValueError:
             pass
     return None
