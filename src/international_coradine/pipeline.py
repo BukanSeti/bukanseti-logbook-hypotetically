@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,7 +12,8 @@ from .extractors import extractor_for
 from .inventory import build_source_inventory
 from .pdf_export import export_pdf_from_workbook
 from .reconstruction import Reconstructor
-from .references import AircraftBank, CrewBank, download_sheet_xlsx, resolve_reference_path
+from .reference_client import ReferenceApiClient, RemoteAircraftBank, RemoteCrewBank
+from .references import AircraftBank, CrewBank, resolve_reference_path
 from .validation import validate
 from .workbook import WorkbookWriter
 
@@ -30,12 +32,10 @@ class CoradinePipeline:
         self.config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
     def refresh_references(self) -> tuple[Path, Path]:
-        references = self.config["references"]
-        crew_path = resolve_reference_path(references["crew_cache"], "LION_AIR_CREW_XLSX")
-        aircraft_path = resolve_reference_path(references["aircraft_cache"], "LION_AIR_AIRCRAFT_XLSX")
-        download_sheet_xlsx(references["crew_sheet_url"], crew_path)
-        download_sheet_xlsx(references["aircraft_sheet_url"], aircraft_path)
-        return crew_path, aircraft_path
+        raise RuntimeError(
+            "Direct Crew/Aircraft Bank downloads are disabled. "
+            "Use the private reference API instead."
+        )
 
     def inventory_only(self, inputs: list[Path], output_dir: Path) -> Path:
         inventory = build_source_inventory(inputs)
@@ -56,17 +56,19 @@ class CoradinePipeline:
         allow_pdf_fallback: bool = False,
         refresh_references: bool = False,
     ) -> PipelineOutputs:
-        if self.config["processing"].get("require_start_processing_flag", True) and not start_processing:
-            inventory_path = self.inventory_only(inputs, output_dir)
-            raise RuntimeError(
-                f"Source inventory created at {inventory_path}. Re-run with --start-processing after review."
-            )
+        if self.config["processing"].get("require_start_processing_flag", True):
+            if not start_processing:
+                inventory_path = self.inventory_only(inputs, output_dir)
+                raise RuntimeError(
+                    f"Source inventory created at {inventory_path}. "
+                    "Re-run with --start-processing after review."
+                )
         if not owner_name.strip() or owner_name.strip() == "[INSERT FULL NAME]":
             raise ValueError("Exact logbook owner full name is required")
-
-        inventory = build_source_inventory(inputs)
         if refresh_references:
             self.refresh_references()
+
+        inventory = build_source_inventory(inputs)
         crew_bank, aircraft_bank = self._load_reference_banks()
 
         raw_entries = []
@@ -83,7 +85,9 @@ class CoradinePipeline:
             airports=airports,
             crew_bank=crew_bank,
             aircraft_bank=aircraft_bank,
-            turnaround_minutes=int(self.config["processing"].get("default_turnaround_minutes", 45)),
+            turnaround_minutes=int(
+                self.config["processing"].get("default_turnaround_minutes", 45)
+            ),
         )
         reconstruction = reconstructor.reconstruct(raw_entries)
         validation = validate(
@@ -98,7 +102,9 @@ class CoradinePipeline:
         pdf_path = output_dir / self.config["output"]["pdf_name"]
         WorkbookWriter(
             owner_name=owner_name,
-            rows_per_page=int(self.config["processing"].get("rows_per_print_page", 24)),
+            rows_per_page=int(
+                self.config["processing"].get("rows_per_print_page", 24)
+            ),
         ).write(
             workbook_path,
             reconstruction.sectors,
@@ -114,12 +120,56 @@ class CoradinePipeline:
             owner_name,
             allow_fallback=allow_pdf_fallback,
         )
-        return PipelineOutputs(workbook=workbook_path, pdf=pdf_path, summary=validation.summary)
+        return PipelineOutputs(
+            workbook=workbook_path,
+            pdf=pdf_path,
+            summary=validation.summary,
+        )
 
-    def _load_reference_banks(self) -> tuple[CrewBank | None, AircraftBank | None]:
-        references = self.config["references"]
-        crew_path = resolve_reference_path(references["crew_cache"], "LION_AIR_CREW_XLSX")
-        aircraft_path = resolve_reference_path(references["aircraft_cache"], "LION_AIR_AIRCRAFT_XLSX")
+    def _load_reference_banks(self):
+        references = self.config.get("references", {})
+        api_url_env = references.get("api_url_env", "CORADINE_REFERENCE_API_URL")
+        api_token_env = references.get("api_token_env", "CORADINE_REFERENCE_API_TOKEN")
+        api_url = os.getenv(api_url_env, "").strip()
+        api_token = os.getenv(api_token_env, "").strip()
+
+        if api_url or api_token:
+            if not api_url or not api_token:
+                raise RuntimeError(
+                    f"Both {api_url_env} and {api_token_env} must be configured"
+                )
+            client = ReferenceApiClient(
+                base_url=api_url,
+                token=api_token,
+                timeout_seconds=float(
+                    references.get("request_timeout_seconds", 15)
+                ),
+            )
+            return RemoteCrewBank(client), RemoteAircraftBank(client)
+
+        if references.get("required", False):
+            raise RuntimeError(
+                "Private reference API is required but no URL/token is configured"
+            )
+
+        local_admin_enabled = (
+            os.getenv("CORADINE_ALLOW_LOCAL_REFERENCE_ADMIN", "false").lower()
+            in {"1", "true", "yes"}
+        )
+        if not (
+            references.get("allow_local_admin_fallback", False)
+            and local_admin_enabled
+        ):
+            return None, None
+
+        crew_path = resolve_reference_path(
+            references.get("crew_cache", ".cache/Lion_Air_Crew.xlsx"),
+            "LION_AIR_CREW_XLSX",
+        )
+        aircraft_path = resolve_reference_path(
+            references.get("aircraft_cache", ".cache/Lion_Air_Airplane.xlsx"),
+            "LION_AIR_AIRCRAFT_XLSX",
+        )
         crew = CrewBank.from_xlsx(crew_path) if crew_path.exists() else None
         aircraft = AircraftBank.from_xlsx(aircraft_path) if aircraft_path.exists() else None
         return crew, aircraft

@@ -14,8 +14,12 @@ processing:
   allow_reportlab_fallback: false
   leave_missing_approach_unverified: true
 references:
-  crew_sheet_url: "https://docs.google.com/spreadsheets/d/1gpPtVN9LYdg9EptvudA87CH67c6SP7IDE7bQUmYi7yc/edit?usp=drivesdk"
-  aircraft_sheet_url: "https://docs.google.com/spreadsheets/d/1TzgCM3_SwgyrcDdfN_K4Asm0oxBj7oATRyEaXcBTH60/edit?usp=drivesdk"
+  mode: remote
+  required: false
+  api_url_env: CORADINE_REFERENCE_API_URL
+  api_token_env: CORADINE_REFERENCE_API_TOKEN
+  request_timeout_seconds: 15
+  allow_local_admin_fallback: false
   crew_cache: ".cache/Lion_Air_Crew.xlsx"
   aircraft_cache: ".cache/Lion_Air_Airplane.xlsx"
 output:

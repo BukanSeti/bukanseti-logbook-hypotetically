@@ -1,39 +1,33 @@
 # INTERNATIONAL CORADINE Rev 3 — Lion Air Pilot Logbook
 
-A **Lion Air-only** pipeline for turning pilot-logbook photographs, scans, PDFs, CSV/JSON, or spreadsheets into:
+A **Lion Air-only** pipeline for turning pilot-logbook photographs, scans, PDFs,
+CSV/JSON, or spreadsheets into:
 
 - `International_Coradine.xlsx`
 - `International_Coradine.pdf`
 
-The project is deliberately conservative: readable source data is preserved, reconstruction is disclosed field-by-field, employee IDs are never fabricated, missing approaches are not invented, and records from other airlines are rejected.
+The project preserves readable source data, discloses reconstruction field-by-field,
+never fabricates employee IDs, and rejects identified records from other airlines.
 
-> This is a personal analytical reconstruction tool. It is not a company-confirmed, regulator-verified, licensing-authority-certified, or officially certified pilot logbook.
+> This is a personal analytical reconstruction tool. It is not a company-confirmed,
+> regulator-verified, licensing-authority-certified, or officially certified pilot logbook.
 
-## Core safeguards
+## Private reference design
 
-- Exact logbook-owner name is mandatory.
-- Explicit `--start-processing` gate mirrors the required **START PROCESSING** instruction.
-- Lion Air-only guard rejects identified records from other airlines.
-- Multi-airport routes become N−1 sector rows.
-- Combined time allocation preserves the exact source minute total.
-- Final route columns use ICAO codes.
-- `TOTAL TIME = IFR = ACTUAL IFR` for actual flights.
-- `P1 U/S ≤ Copilot Time ≤ Total Time` is validated.
-- Simulator rows cannot carry flight-operation time.
-- Every non-source decision is recorded in `DATA PROVENANCE`.
-- Remark remains blank.
-- Strict PDF mode exports from the completed workbook through LibreOffice.
+Shared repo users do **not** receive the Lion Air Crew or Airplane workbooks. The normal
+configuration calls a private, token-authenticated API controlled by the system owner.
 
-## Private Lion Air references
+The repo can receive only:
 
-The default configuration points to the supplied Google Sheets:
+- Crew: `employee_id` and `full_name`
+- Aircraft: `registration` and `aircraft_type`
 
-- **Lion Air Crew** — crew name, employee ID, ATPL, role, status, source, and validation status.
-- **Lion Air Airplane** — registration, ICAO type, aircraft type/variant, operator, historical usage, source, and validation status.
+The API has no bulk-list or bank-download endpoint. ATPL, rank, employment status,
+operator details, validation status, and other fields are not returned.
 
-Downloaded reference caches are local and ignored by Git. The repo does **not** publish crew or aircraft rows.
+Server setup is documented in [`docs/PRIVATE_REFERENCE_API.md`](docs/PRIVATE_REFERENCE_API.md).
 
-## Install
+## Install the logbook client
 
 ```bash
 python -m venv .venv
@@ -43,34 +37,23 @@ pip install -e ".[dev]"
 
 For strict PDF-from-Excel rendering, install LibreOffice or use Docker.
 
-```bash
-docker build -t international-coradine .
-```
-
-## 1. Refresh reference banks
-
-The Google Sheets must be viewable by the runtime account. Otherwise, place exported `.xlsx` files at the configured cache paths.
+## Configure a user's private API access
 
 ```bash
-coradine refresh-references
+export CORADINE_REFERENCE_API_URL="https://reference.example.com"
+export CORADINE_REFERENCE_API_TOKEN="token-issued-to-this-user"
 ```
 
-Or configure private local files:
+The token is user-specific. It is not a Google credential and cannot directly open the
+Google Sheets.
 
-```bash
-export LION_AIR_CREW_XLSX=/private/Lion_Air_Crew.xlsx
-export LION_AIR_AIRCRAFT_XLSX=/private/Lion_Air_Airplane.xlsx
-```
-
-## 2. Inventory uploads without processing
+## Inventory uploads without processing
 
 ```bash
 coradine inventory scans/page-001.jpg scans/page-002.jpg --output-dir work
 ```
 
-This creates `work/source_inventory.json` only.
-
-## 3. Start processing
+## Process the logbook
 
 ```bash
 export OPENAI_API_KEY="..."       # needed for photographs/PDFs
@@ -83,28 +66,23 @@ coradine process \
   --output-dir output
 ```
 
-Structured CSV/JSON/XLSX inputs do not require the OpenAI API. Photo/PDF extraction uses the OpenAI Responses API with image/file input and structured JSON output.
+Structured CSV/JSON/XLSX inputs do not require the OpenAI API. Photo/PDF extraction uses
+image/file input and structured JSON output.
 
-Use the non-identical fallback renderer only when LibreOffice is unavailable:
+## Core safeguards
 
-```bash
-coradine process source.csv \
-  --owner "FULL NAME" \
-  --start-processing \
-  --allow-pdf-fallback
-```
-
-## Accepted normalized columns
-
-The structured-file extractor recognizes common aliases for:
-
-`Date`, `Airline`, `Flight Number`, `Route`, `OUT`, `IN`, `Total Time`, `Registration`, `Aircraft Type`, `PIC Name`, `PIC ID`, `P1 U/S`, `Simulator Time`, and `Approach`.
-
-A route such as `CGK SOC CGK SUB` becomes:
-
-1. `WIII – WAHQ`
-2. `WAHQ – WIII`
-3. `WIII – WARR`
+- Exact logbook-owner name is mandatory.
+- Explicit `--start-processing` gate is required.
+- Lion Air-only guard rejects identified records from other airlines.
+- Multi-airport routes become N−1 sector rows.
+- Combined time allocation preserves the exact source-minute total.
+- Final route columns use ICAO codes.
+- `TOTAL TIME = IFR = ACTUAL IFR` for actual flights.
+- `P1 U/S ≤ Copilot Time ≤ Total Time` is validated.
+- Simulator rows cannot carry flight-operation time.
+- Every non-source decision is recorded in `DATA PROVENANCE`.
+- Remark remains blank.
+- Strict PDF mode exports from the completed workbook through LibreOffice.
 
 ## Output workbook
 
@@ -114,19 +92,29 @@ A route such as `CGK SOC CGK SUB` becomes:
 - `AIRPORT CODE MAPPING`
 - `SOURCE INVENTORY`
 
-The workbook uses formulas, protected formula cells, repeated print headers, manual page breaks, print area, A3 landscape, bordered cells, and explicit totals.
+## Administrator-only local fallback
 
-## Pixel-accurate layout
-
-The included renderer establishes the Rev 3 semantic structure and print controls. True pixel matching requires authorized reference photographs/scans in a private working directory and a template-calibration pass. Do not claim pixel accuracy until every exported PDF page has also been manually reviewed for clipping, overlap, border displacement, row alignment, and accidental blank pages.
+Direct reference downloads are disabled. A system administrator may use already exported,
+private local workbooks only by changing `allow_local_admin_fallback` in a private config
+and setting `CORADINE_ALLOW_LOCAL_REFERENCE_ADMIN=true`. Do not enable this in copies shared
+with other users.
 
 ## Tests
 
 ```bash
+pip install -e ".[dev,reference-api]"
+ruff check src tests scripts
 pytest -q
-ruff check src tests
 ```
+
+## Pixel-accurate layout
+
+The renderer establishes the Rev 3 semantic structure and print controls. A true
+pixel-matching claim still requires authorized reference photographs and manual inspection
+of every exported PDF page for clipping, overlap, border displacement, row alignment, and
+accidental blank pages.
 
 ## License
 
-MIT. Source logbooks, crew directories, aircraft banks, and reference photographs remain subject to their owners' privacy and distribution rights.
+MIT. Source logbooks, crew directories, aircraft banks, and reference photographs remain
+subject to their owners' privacy and distribution rights.

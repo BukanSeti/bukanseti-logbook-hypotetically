@@ -5,6 +5,7 @@ __pycache__/
 .venv/
 venv/
 .env
+.env.reference-api
 .cache/
 output/
 work/
@@ -14,3 +15,4 @@ work/
 .DS_Store
 service-account*.json
 credentials*.json
+reference-api-tokens*.json
