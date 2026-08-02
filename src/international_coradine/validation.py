@@ -3,6 +3,8 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass, field
 
+from .airport_codes import is_icao_airport_code
+from .manual_aircraft import is_icao_aircraft_type
 from .models import EM_DASH, FlightSector, ProvenanceRecord, ValidationIssue
 from .time_utils import elapsed_minutes, parse_duration_minutes
 
@@ -25,9 +27,17 @@ def validate(
 ) -> ValidationResult:
     result = ValidationResult()
     source_total = _sum_unique_source_totals(provenance)
-    final_total = sum(parse_duration_minutes(s.total_time) or 0 for s in sectors)
+    final_total = sum(parse_duration_minutes(sector.total_time) or 0 for sector in sectors)
     fingerprints = Counter(
-        (s.date, s.flight_number, s.departure, s.arrival, s.out_time, s.registration) for s in sectors
+        (
+            sector.date,
+            sector.flight_number,
+            sector.departure,
+            sector.arrival,
+            sector.out_time,
+            sector.registration,
+        )
+        for sector in sectors
     )
 
     for sector in sectors:
@@ -54,13 +64,22 @@ def validate(
         "Number of unreadable fields": class_counts.get("UNREADABLE", 0),
         "Number of estimated fields": class_counts.get("ESTIMATED", 0),
         "Number of looked-up fields": class_counts.get("LOOKED UP", 0),
+        "Number of manual fields": class_counts.get("MANUAL", 0),
         "Number of unverified fields": class_counts.get("UNVERIFIED", 0),
         "Number of unresolved items": unresolved,
         "Formula errors": 0,
-        "Chronological errors": sum(issue.code == "TIME_MISMATCH" for issue in result.issues),
-        "Duplicate entries": sum(issue.code == "DUPLICATE_ENTRY" for issue in result.issues),
-        "Validation errors": sum(issue.severity == "ERROR" for issue in result.issues),
-        "Validation warnings": sum(issue.severity == "WARNING" for issue in result.issues),
+        "Chronological errors": sum(
+            issue.code == "TIME_MISMATCH" for issue in result.issues
+        ),
+        "Duplicate entries": sum(
+            issue.code == "DUPLICATE_ENTRY" for issue in result.issues
+        ),
+        "Validation errors": sum(
+            issue.severity == "ERROR" for issue in result.issues
+        ),
+        "Validation warnings": sum(
+            issue.severity == "WARNING" for issue in result.issues
+        ),
     }
     return result
 
@@ -68,10 +87,54 @@ def validate(
 def _validate_sector(sector: FlightSector, result: ValidationResult) -> None:
     if sector.remark:
         result.issues.append(
-            ValidationIssue(severity="ERROR", entry_number=sector.entry_number, code="REMARK_NOT_BLANK", message="Remark must remain blank")
+            ValidationIssue(
+                severity="ERROR",
+                entry_number=sector.entry_number,
+                code="REMARK_NOT_BLANK",
+                message="Remark must remain blank",
+            )
         )
+
+    if sector.aircraft_type != EM_DASH and not is_icao_aircraft_type(
+        sector.aircraft_type
+    ):
+        result.issues.append(
+            ValidationIssue(
+                severity="ERROR",
+                entry_number=sector.entry_number,
+                code="INVALID_ICAO_AIRCRAFT_TYPE",
+                message=(
+                    "Aircraft Type must use an ICAO aircraft type designator, "
+                    "for example B738, B739, or B38M"
+                ),
+            )
+        )
+
+    for field_name, airport_code in (
+        ("Departure", sector.departure),
+        ("Arrival", sector.arrival),
+    ):
+        if airport_code != EM_DASH and not is_icao_airport_code(airport_code):
+            result.issues.append(
+                ValidationIssue(
+                    severity="ERROR",
+                    entry_number=sector.entry_number,
+                    code="INVALID_ICAO_AIRPORT",
+                    message=(
+                        f"{field_name} must use a four-letter ICAO airport code; "
+                        f"received {airport_code!r}"
+                    ),
+                )
+            )
+
     if sector.simulator_time != EM_DASH:
-        forbidden = [sector.total_time, sector.ifr, sector.actual_ifr, sector.copilot_time, sector.p1_us]
+        forbidden = [
+            sector.total_time,
+            sector.ifr,
+            sector.actual_ifr,
+            sector.copilot_time,
+            sector.p1_us,
+        ]
         if any(value != EM_DASH for value in forbidden):
             result.issues.append(
                 ValidationIssue(
@@ -105,28 +168,51 @@ def _validate_sector(sector: FlightSector, result: ValidationResult) -> None:
                 severity="ERROR",
                 entry_number=sector.entry_number,
                 code="TIME_MISMATCH",
-                message=f"IN minus OUT is {elapsed} minutes but Total Time is {total} minutes",
+                message=(
+                    f"IN minus OUT is {elapsed} minutes but Total Time is "
+                    f"{total} minutes"
+                ),
             )
         )
     if p1us is not None and copilot is None:
         result.issues.append(
-            ValidationIssue(severity="ERROR", entry_number=sector.entry_number, code="P1US_WITHOUT_COPILOT", message="P1 U/S exists without Copilot Time")
+            ValidationIssue(
+                severity="ERROR",
+                entry_number=sector.entry_number,
+                code="P1US_WITHOUT_COPILOT",
+                message="P1 U/S exists without Copilot Time",
+            )
         )
     if p1us is not None and copilot is not None and p1us > copilot:
         result.issues.append(
-            ValidationIssue(severity="ERROR", entry_number=sector.entry_number, code="P1US_EXCEEDS_COPILOT", message="P1 U/S exceeds Copilot Time")
+            ValidationIssue(
+                severity="ERROR",
+                entry_number=sector.entry_number,
+                code="P1US_EXCEEDS_COPILOT",
+                message="P1 U/S exceeds Copilot Time",
+            )
         )
     if copilot is not None and total is not None and copilot > total:
         result.issues.append(
-            ValidationIssue(severity="ERROR", entry_number=sector.entry_number, code="COPILOT_EXCEEDS_TOTAL", message="Copilot Time exceeds Total Time")
+            ValidationIssue(
+                severity="ERROR",
+                entry_number=sector.entry_number,
+                code="COPILOT_EXCEEDS_TOTAL",
+                message="Copilot Time exceeds Total Time",
+            )
         )
-    if sector.departure != EM_DASH and sector.arrival != EM_DASH and sector.departure == sector.arrival:
+    if (
+        sector.departure != EM_DASH
+        and sector.arrival != EM_DASH
+        and sector.departure == sector.arrival
+    ):
         result.issues.append(
-            ValidationIssue(severity="WARNING", entry_number=sector.entry_number, code="SAME_AIRPORT", message="Departure and arrival are identical")
-        )
-    if len(sector.departure) not in {1, 4} or len(sector.arrival) not in {1, 4}:
-        result.issues.append(
-            ValidationIssue(severity="ERROR", entry_number=sector.entry_number, code="INVALID_ICAO", message="Route contains a non-ICAO code")
+            ValidationIssue(
+                severity="WARNING",
+                entry_number=sector.entry_number,
+                code="SAME_AIRPORT",
+                message="Departure and arrival are identical",
+            )
         )
 
 

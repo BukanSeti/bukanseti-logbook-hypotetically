@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "international-coradine-lion-air"
-version = "0.3.0"
-description = "Lion Air-only photo-to-Excel/PDF logbook reconstruction pipeline"
+version = "0.3.1"
+description = "Lion Air-only photo-to-Excel/PDF logbook pipeline with ICAO-only aircraft and airport output"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}

@@ -156,10 +156,10 @@ def _write_manual_review(
                         "source_entry": sector.source_entry_number,
                         "date": date_text,
                         "route": route,
-                        "missing": ["registration", "aircraft_type"],
+                        "missing": ["registration", "aircraft_type_icao"],
                         "question": (
-                            "Provide the aircraft registration and type from a reliable public "
-                            "source or your own record."
+                            "Provide the aircraft registration and ICAO aircraft type "
+                            "designator from a reliable public source or your own record."
                         ),
                         "rerun_example": "--aircraft PK-LJF=B739",
                     }
@@ -175,8 +175,11 @@ def _write_manual_review(
                         "date": date_text,
                         "route": route,
                         "registration": sector.registration,
-                        "missing": ["aircraft_type"],
-                        "question": f"Provide the aircraft type for {sector.registration}.",
+                        "missing": ["aircraft_type_icao"],
+                        "question": (
+                            f"Provide the ICAO aircraft type designator for "
+                            f"{sector.registration}."
+                        ),
                         "rerun_example": f"--aircraft {sector.registration}=B739",
                     }
                 )
@@ -217,7 +220,15 @@ def _write_manual_review(
             "Crew names and employee IDs are transcribed only from the supplied photo. "
             "No Crew Bank, private API, Google Sheet, or directory is accessed."
         ),
-        "aircraft_input_format": "Repeat --aircraft REGISTRATION=TYPE as needed.",
+        "aircraft_type_standard": (
+            "Final Aircraft Type uses ICAO designators only, such as B738, B739, or B38M."
+        ),
+        "airport_code_standard": (
+            "Final Departure and Arrival use four-letter ICAO airport codes only."
+        ),
+        "aircraft_input_format": (
+            "Repeat --aircraft REGISTRATION=ICAO_TYPE as needed."
+        ),
         "aircraft_questions": aircraft_questions,
         "unverified_crew_fields": crew_unverified,
     }

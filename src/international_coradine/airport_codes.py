@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import csv
 import math
+import re
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
 from .models import AirportMapping
+
+
+ICAO_AIRPORT_PATTERN = re.compile(r"^[A-Z]{4}$")
 
 
 @dataclass(frozen=True)
@@ -35,6 +39,10 @@ class AirportDirectory:
                     longitude=float(row["longitude"]),
                     historical_code=row.get("historical_code", ""),
                 )
+                if not is_icao_airport_code(airport.icao):
+                    raise ValueError(
+                        f"Airport seed contains invalid ICAO code: {airport.icao!r}"
+                    )
                 self.by_iata[airport.iata] = airport
                 self.by_icao[airport.icao] = airport
 
@@ -73,3 +81,7 @@ class AirportDirectory:
         dlat, dlon = lat2 - lat1, lon2 - lon1
         h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
         return 2 * radius * math.asin(math.sqrt(h))
+
+
+def is_icao_airport_code(value: str) -> bool:
+    return bool(ICAO_AIRPORT_PATTERN.fullmatch(value.strip().upper()))

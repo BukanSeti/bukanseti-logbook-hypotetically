@@ -12,7 +12,20 @@ logbook reconstruction workflow.
 - Treat outputs as personal calculation, historical comparison, review, and organization—not
   company, regulator, or licensing-authority certification.
 - Never silently fabricate crew employee IDs, PIC assignments, runways, approaches, flight
-  numbers, registrations, aircraft types, or source information.
+  numbers, registrations, aircraft types, airport codes, or source information.
+
+## Mandatory ICAO output
+
+- The final Aircraft Type field must contain an ICAO aircraft type designator only.
+- Normalize Boeing 737-800/800NG variants to `B738`.
+- Normalize Boeing 737-900ER variants to `B739`.
+- Normalize Boeing 737 MAX 8/737-8 variants to `B38M`.
+- Other valid ICAO aircraft type designators may be preserved.
+- Expanded marketing/model names must not appear in the final Aircraft Type column.
+- Final Departure and Arrival fields must contain four-letter ICAO airport codes only.
+- Convert known IATA source codes to ICAO, such as `SUB` → `WARR` and `CGK` → `WIII`.
+- Unknown airport codes remain an em dash; they must not be guessed.
+- Validation must report final non-ICAO aircraft type or airport values as errors.
 
 ## Privacy boundary
 
@@ -26,9 +39,10 @@ The repository must not access, request, download, embed, or distribute:
 Crew name and employee ID are source-only fields. They may be populated only when readable in
 the supplied photograph, PDF, or structured source. Missing crew data remains unverified.
 
-Aircraft registration and type may be transcribed from the source or supplied manually by the
-user with `--aircraft REGISTRATION=TYPE`. Manual aircraft values must be classified as
-`MANUAL` in data provenance.
+Aircraft registration and type may be transcribed from the source or supplied manually with
+`--aircraft REGISTRATION=ICAO_TYPE`. Recognized expanded model names may be accepted as input,
+but the stored output must be the corresponding ICAO designator. Manual aircraft values are
+classified as `MANUAL` in data provenance.
 
 ## Source priority
 
@@ -51,19 +65,19 @@ Conflicts preserve the higher-priority source and are disclosed in `DATA PROVENA
 
 `SOURCE`, `MANUAL`, `DERIVED`, `LOOKED UP`, `ESTIMATED`, `UNVERIFIED`, and `UNREADABLE` are
 available. The photo-only workflow normally uses `SOURCE`, `MANUAL`, `DERIVED`, `ESTIMATED`,
-`UNVERIFIED`, and `UNREADABLE`; it does not perform crew or aircraft-bank lookup.
+`UNVERIFIED`, and `UNREADABLE`; it performs no crew or aircraft-bank lookup.
 
 ## Transcription and reconstruction
 
-- Preserve readable source values exactly.
+- Preserve readable source information while normalizing final aircraft and airport fields to
+  their required ICAO designators.
 - Unreadable fields are not silently guessed.
 - Convert IATA routes to configured ICAO codes and record mappings.
 - Split a route sequence of N airports into N−1 sectors.
 - Allocate combined source time across sectors while preserving the exact minute total.
 - Preserve source flight numbers; missing flight numbers remain unverified.
 - Preserve source registrations and normalize three-letter values to the `PK-XXX` form.
-- Accept repeatable manual aircraft mappings using `--aircraft REGISTRATION=TYPE`.
-- Standardize `B739` to `B737-900ER`, `B738` to `B737-800NG`, and `B38M` to `B737 MAX 8`.
+- Accept repeatable manual aircraft mappings using `--aircraft REGISTRATION=ICAO_TYPE`.
 - Preserve source approaches; missing runway/approach remains an em dash.
 - Reconstruct OUT/IN only when an anchor time and duration support the calculation.
 - For actual flights, `TOTAL TIME = IFR = ACTUAL IFR`.
@@ -77,7 +91,7 @@ available. The photo-only workflow normally uses `SOURCE`, `MANUAL`, `DERIVED`, 
 
 `manual_review.json` must identify:
 
-- entries missing aircraft registration or type;
+- entries missing aircraft registration or ICAO type;
 - a rerun example using `--aircraft`;
 - missing crew fields that remain unresolved under the source-only privacy policy.
 

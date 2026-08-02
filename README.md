@@ -7,30 +7,51 @@ CSV/JSON, or spreadsheets into:
 - `International_Coradine.pdf`
 - `manual_review.json`
 
-The shared repository is deliberately self-contained. It does **not** access or request:
-
-- a Crew Bank;
-- an Aircraft Bank;
-- a Google Sheet or Google Drive folder;
-- a private reference API;
-- a service account, server token, or hosting service.
+The shared repository is self-contained. It does **not** access or request a Crew Bank,
+Aircraft Bank, Google Sheet, Google Drive folder, private API, service account, server token,
+or hosting service.
 
 > This is a personal analytical reconstruction tool. It is not a company-confirmed,
 > regulator-verified, licensing-authority-certified, or officially certified pilot logbook.
 
+## Mandatory ICAO output standard
+
+All final aircraft and airport fields use ICAO designators only.
+
+### Aircraft Type
+
+Common source or manual values are normalized to ICAO aircraft type designators:
+
+- `B737-800`, `B737-800NG`, or `B738` → `B738`
+- `B737-900ER` or `B739` → `B739`
+- `B737 MAX 8`, `737-8`, or `B38M` → `B38M`
+
+Other valid ICAO aircraft type designators, such as `A320`, remain unchanged. Expanded model
+names are never written to the final Aircraft Type column.
+
+### Airports
+
+All final departure and arrival fields use four-letter ICAO airport codes. Known IATA codes
+from the source are converted automatically, for example:
+
+- `SUB` → `WARR`
+- `CGK` → `WIII`
+- `SOC` → `WAHQ`
+
+A route written as `SUB–CGK` in the source is therefore stored as `WARR–WIII`. Unknown or
+unverified airport codes remain an em dash rather than being guessed.
+
+The validation report marks any final non-ICAO aircraft type or airport code as an error.
+
 ## Privacy and reference policy
 
-Crew names and employee IDs are transcribed only when they are readable in the supplied
-photo. Missing or unreadable crew fields remain `UNVERIFIED` or `UNREADABLE`; the software
-never searches a crew directory and never fabricates an employee ID.
+Crew names and employee IDs are transcribed only when readable in the supplied source.
+Missing or unreadable crew fields remain `UNVERIFIED` or `UNREADABLE`; the software never
+searches a crew directory and never fabricates an employee ID.
 
-Aircraft registration and type may come from:
-
-1. readable text in the photo; or
-2. an explicit manual value supplied by the user with `--aircraft REGISTRATION=TYPE`.
-
-The repository performs no background aircraft lookup. This keeps the shared workflow free
-from private data and external reference access.
+Aircraft registration and type may come from readable text in the source or an explicit
+manual value supplied with `--aircraft REGISTRATION=ICAO_TYPE`. No background aircraft lookup
+is performed.
 
 ## Install
 
@@ -64,10 +85,10 @@ coradine photo \
   --output-dir output
 ```
 
-The `photo` command starts processing immediately. It performs OCR, reconstruction,
-validation, and Excel/PDF generation without a separate `START PROCESSING` flag.
+The `photo` command starts processing immediately and performs OCR, reconstruction,
+validation, and Excel/PDF generation.
 
-When aircraft type must be supplied manually:
+When aircraft type must be supplied manually, use an ICAO designator:
 
 ```bash
 coradine photo \
@@ -78,30 +99,22 @@ coradine photo \
   --output-dir output
 ```
 
-The flag is repeatable. Both `PK-LJF=B739` and `LJF=B739` are accepted. Common types are
-standardized as follows:
-
-- `B738` → `B737-800NG`
-- `B739` → `B737-900ER`
-- `B38M` → `B737 MAX 8`
+The flag is repeatable. Both `PK-LJF=B739` and `LJF=B739` are accepted. A recognized expanded
+model such as `PK-LJF=B737-900ER` is accepted as input but normalized to `B739` in the output.
 
 ## Manual review file
 
-Every run creates `manual_review.json`.
+Every run creates `manual_review.json`. It contains:
 
-It contains:
+- aircraft entries that still need registration or ICAO type;
+- an exact `--aircraft` example for a rerun;
+- crew fields that remain unverified because they were not readable;
+- confirmation that no Crew Bank or private directory was accessed.
 
-- aircraft entries that still need registration or type;
-- an exact example of the `--aircraft` argument needed for a rerun;
-- crew fields that remain unverified because they were not readable in the source photo;
-- a clear statement that no Crew Bank or private directory was accessed.
-
-Missing information is never silently guessed. The Excel/PDF can still be generated with an
-em dash while the unresolved field remains visible in the validation and provenance sheets.
+Missing information is never silently guessed. Excel/PDF generation can continue with an em
+dash while unresolved fields remain visible in validation and provenance sheets.
 
 ## Advanced processing gate
-
-The original gated workflow remains available:
 
 ```bash
 coradine process \
@@ -111,7 +124,7 @@ coradine process \
   --output-dir output
 ```
 
-Use `coradine inventory` when only a read-only inventory is needed:
+Use `coradine inventory` for a read-only source inventory:
 
 ```bash
 coradine inventory scans/page-001.jpg scans/page-002.jpg --output-dir work
@@ -121,9 +134,10 @@ coradine inventory scans/page-001.jpg scans/page-002.jpg --output-dir work
 
 - Exact logbook-owner name is mandatory.
 - Lion Air-only guard rejects identified records from other airlines.
+- Final Aircraft Type uses an ICAO aircraft type designator.
+- Final Departure and Arrival use four-letter ICAO airport codes.
 - Multi-airport routes become N−1 sector rows.
 - Combined time allocation preserves the exact source-minute total.
-- Final route columns use ICAO codes.
 - `TOTAL TIME = IFR = ACTUAL IFR` for actual flights.
 - `P1 U/S ≤ Copilot Time ≤ Total Time` is validated.
 - Missing runways, approaches, flight numbers, crew IDs, or aircraft types are not invented.
@@ -149,22 +163,15 @@ pytest -q
 
 ## Sharing the repository
 
-A friend needs:
-
-1. this repository;
-2. their own logbook photo/PDF;
-3. the exact logbook-owner name;
-4. their own OpenAI API key when running photo OCR locally;
-5. optional manual registration/type values for aircraft that are not readable.
-
-They do not need access to any private bank, Google Sheet, Drive folder, token, or server.
+A friend needs this repository, their logbook photo/PDF, the exact owner name, their own
+OpenAI API key for local photo OCR, and optional manual registration/ICAO type values.
+They do not need access to a private bank, Google Sheet, Drive folder, token, or server.
 
 ## Pixel-accurate layout
 
 The renderer establishes the Rev 3 semantic structure and print controls. A true
 pixel-matching claim still requires authorized reference photographs and manual inspection
-of every exported PDF page for clipping, overlap, border displacement, row alignment, and
-accidental blank pages.
+of every exported PDF page.
 
 ## License
 
