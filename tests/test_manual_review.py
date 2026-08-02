@@ -28,4 +28,4 @@ def test_manual_review_requests_aircraft_and_preserves_crew_privacy(tmp_path: Pa
         "pic_employee_id",
     ]
     saved = json.loads(destination.read_text(encoding="utf-8"))
-    assert "does not use, request, or access any Crew Bank" in saved["privacy_policy"]
+    assert "No Crew Bank" in saved["privacy_policy"]
