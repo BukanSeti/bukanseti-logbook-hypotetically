@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,10 +9,10 @@ import yaml
 from .airport_codes import AirportDirectory
 from .extractors import extractor_for
 from .inventory import build_source_inventory
+from .manual_aircraft import ManualAircraftDirectory
+from .models import EM_DASH, FlightSector
 from .pdf_export import export_pdf_from_workbook
 from .reconstruction import Reconstructor
-from .reference_client import ReferenceApiClient, RemoteAircraftBank, RemoteCrewBank
-from .references import AircraftBank, CrewBank, resolve_reference_path
 from .validation import validate
 from .workbook import WorkbookWriter
 
@@ -22,6 +21,7 @@ from .workbook import WorkbookWriter
 class PipelineOutputs:
     workbook: Path
     pdf: Path
+    manual_review: Path
     summary: dict[str, object]
 
 
@@ -31,18 +31,16 @@ class CoradinePipeline:
         self.repo_root = config_path.parent.parent
         self.config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
 
-    def refresh_references(self) -> tuple[Path, Path]:
-        raise RuntimeError(
-            "Direct Crew/Aircraft Bank downloads are disabled. "
-            "Use the private reference API instead."
-        )
-
     def inventory_only(self, inputs: list[Path], output_dir: Path) -> Path:
         inventory = build_source_inventory(inputs)
         output_dir.mkdir(parents=True, exist_ok=True)
         destination = output_dir / "source_inventory.json"
         destination.write_text(
-            json.dumps([item.model_dump(mode="json") for item in inventory], indent=2),
+            json.dumps(
+                [item.model_dump(mode="json") for item in inventory],
+                indent=2,
+                default=str,
+            ),
             encoding="utf-8",
         )
         return destination
@@ -54,23 +52,21 @@ class CoradinePipeline:
         output_dir: Path,
         start_processing: bool,
         allow_pdf_fallback: bool = False,
-        refresh_references: bool = False,
+        aircraft_overrides: list[str] | None = None,
     ) -> PipelineOutputs:
-        if self.config["processing"].get("require_start_processing_flag", True):
-            if not start_processing:
-                inventory_path = self.inventory_only(inputs, output_dir)
-                raise RuntimeError(
-                    f"Source inventory created at {inventory_path}. "
-                    "Re-run with --start-processing after review."
-                )
+        if (
+            self.config["processing"].get("require_start_processing_flag", True)
+            and not start_processing
+        ):
+            inventory_path = self.inventory_only(inputs, output_dir)
+            raise RuntimeError(
+                f"Source inventory created at {inventory_path}. "
+                "Re-run with --start-processing after review."
+            )
         if not owner_name.strip() or owner_name.strip() == "[INSERT FULL NAME]":
             raise ValueError("Exact logbook owner full name is required")
-        if refresh_references:
-            self.refresh_references()
 
         inventory = build_source_inventory(inputs)
-        crew_bank, aircraft_bank = self._load_reference_banks()
-
         raw_entries = []
         for item, path in zip(inventory, inputs, strict=True):
             batch = extractor_for(path).extract(path)
@@ -79,12 +75,12 @@ class CoradinePipeline:
             item.readability_status = "Extracted"
             item.apparent_date_range = _date_range(batch.entries)
 
+        manual_aircraft = ManualAircraftDirectory.from_specs(aircraft_overrides)
         airports = AirportDirectory(self.repo_root / "data" / "airport_seed.csv")
         reconstructor = Reconstructor(
             owner_name=owner_name,
             airports=airports,
-            crew_bank=crew_bank,
-            aircraft_bank=aircraft_bank,
+            manual_aircraft=manual_aircraft,
             turnaround_minutes=int(
                 self.config["processing"].get("default_turnaround_minutes", 45)
             ),
@@ -100,6 +96,11 @@ class CoradinePipeline:
         output_dir.mkdir(parents=True, exist_ok=True)
         workbook_path = output_dir / self.config["output"]["workbook_name"]
         pdf_path = output_dir / self.config["output"]["pdf_name"]
+        review_path = output_dir / self.config["output"].get(
+            "manual_review_name",
+            "manual_review.json",
+        )
+
         WorkbookWriter(
             owner_name=owner_name,
             rows_per_page=int(
@@ -120,59 +121,111 @@ class CoradinePipeline:
             owner_name,
             allow_fallback=allow_pdf_fallback,
         )
+
+        review = _write_manual_review(review_path, reconstruction.sectors)
+        summary = dict(validation.summary)
+        summary["aircraft_questions"] = len(review["aircraft_questions"])
+        summary["unverified_crew_fields"] = len(review["unverified_crew_fields"])
         return PipelineOutputs(
             workbook=workbook_path,
             pdf=pdf_path,
-            summary=validation.summary,
+            manual_review=review_path,
+            summary=summary,
         )
 
-    def _load_reference_banks(self):
-        references = self.config.get("references", {})
-        api_url_env = references.get("api_url_env", "CORADINE_REFERENCE_API_URL")
-        api_token_env = references.get("api_token_env", "CORADINE_REFERENCE_API_TOKEN")
-        api_url = os.getenv(api_url_env, "").strip()
-        api_token = os.getenv(api_token_env, "").strip()
 
-        if api_url or api_token:
-            if not api_url or not api_token:
-                raise RuntimeError(
-                    f"Both {api_url_env} and {api_token_env} must be configured"
+def _write_manual_review(
+    destination: Path,
+    sectors: list[FlightSector],
+) -> dict[str, object]:
+    aircraft_questions: list[dict[str, object]] = []
+    crew_unverified: list[dict[str, object]] = []
+    seen_aircraft: set[tuple[str, str, str]] = set()
+    seen_crew: set[tuple[str, str]] = set()
+
+    for sector in sectors:
+        date_text = sector.date.isoformat() if sector.date else "Unknown"
+        route = f"{sector.departure}-{sector.arrival}"
+        if sector.registration == EM_DASH:
+            key = (sector.source_entry_number, "registration", route)
+            if key not in seen_aircraft:
+                seen_aircraft.add(key)
+                aircraft_questions.append(
+                    {
+                        "entry_number": sector.entry_number,
+                        "source_entry": sector.source_entry_number,
+                        "date": date_text,
+                        "route": route,
+                        "missing": ["registration", "aircraft_type"],
+                        "question": (
+                            "Provide the aircraft registration and type from a reliable public "
+                            "source or your own record."
+                        ),
+                        "rerun_example": "--aircraft PK-LJF=B739",
+                    }
                 )
-            client = ReferenceApiClient(
-                base_url=api_url,
-                token=api_token,
-                timeout_seconds=float(
-                    references.get("request_timeout_seconds", 15)
-                ),
-            )
-            return RemoteCrewBank(client), RemoteAircraftBank(client)
+        elif sector.aircraft_type == EM_DASH:
+            key = (sector.registration, "aircraft_type", route)
+            if key not in seen_aircraft:
+                seen_aircraft.add(key)
+                aircraft_questions.append(
+                    {
+                        "entry_number": sector.entry_number,
+                        "source_entry": sector.source_entry_number,
+                        "date": date_text,
+                        "route": route,
+                        "registration": sector.registration,
+                        "missing": ["aircraft_type"],
+                        "question": f"Provide the aircraft type for {sector.registration}.",
+                        "rerun_example": f"--aircraft {sector.registration}=B739",
+                    }
+                )
 
-        if references.get("required", False):
-            raise RuntimeError(
-                "Private reference API is required but no URL/token is configured"
-            )
+        missing_crew_fields = []
+        if sector.pic_name == EM_DASH:
+            missing_crew_fields.append("pic_name")
+        if sector.pic_employee_id == EM_DASH:
+            missing_crew_fields.append("pic_employee_id")
+        if missing_crew_fields:
+            key = (sector.source_entry_number, ",".join(missing_crew_fields))
+            if key not in seen_crew:
+                seen_crew.add(key)
+                crew_unverified.append(
+                    {
+                        "entry_number": sector.entry_number,
+                        "source_entry": sector.source_entry_number,
+                        "date": date_text,
+                        "route": route,
+                        "fields": missing_crew_fields,
+                        "policy": (
+                            "Left unverified because this repository does not use, request, "
+                            "or access any Crew Bank."
+                        ),
+                    }
+                )
 
-        local_admin_enabled = (
-            os.getenv("CORADINE_ALLOW_LOCAL_REFERENCE_ADMIN", "false").lower()
-            in {"1", "true", "yes"}
-        )
-        if not (
-            references.get("allow_local_admin_fallback", False)
-            and local_admin_enabled
-        ):
-            return None, None
+    if aircraft_questions:
+        status = "needs_aircraft_input"
+    elif crew_unverified:
+        status = "complete_with_unverified_crew_fields"
+    else:
+        status = "complete"
 
-        crew_path = resolve_reference_path(
-            references.get("crew_cache", ".cache/Lion_Air_Crew.xlsx"),
-            "LION_AIR_CREW_XLSX",
-        )
-        aircraft_path = resolve_reference_path(
-            references.get("aircraft_cache", ".cache/Lion_Air_Airplane.xlsx"),
-            "LION_AIR_AIRCRAFT_XLSX",
-        )
-        crew = CrewBank.from_xlsx(crew_path) if crew_path.exists() else None
-        aircraft = AircraftBank.from_xlsx(aircraft_path) if aircraft_path.exists() else None
-        return crew, aircraft
+    document: dict[str, object] = {
+        "status": status,
+        "privacy_policy": (
+            "Crew names and employee IDs are transcribed only from the supplied photo. "
+            "No Crew Bank, private API, Google Sheet, or directory is accessed."
+        ),
+        "aircraft_input_format": "Repeat --aircraft REGISTRATION=TYPE as needed.",
+        "aircraft_questions": aircraft_questions,
+        "unverified_crew_fields": crew_unverified,
+    }
+    destination.write_text(
+        json.dumps(document, indent=2, ensure_ascii=False, default=str),
+        encoding="utf-8",
+    )
+    return document
 
 
 def _date_range(entries) -> str:

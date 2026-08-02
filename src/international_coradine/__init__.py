@@ -1,3 +1,3 @@
-"""International Coradine Rev 3 — Lion Air-only logbook reconstruction."""
+"""International Coradine Rev 3 — photo-only Lion Air logbook reconstruction."""
 
-__version__ = "0.1.0"
+__version__ = "0.3.0"

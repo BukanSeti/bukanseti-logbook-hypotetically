@@ -1,42 +1,38 @@
-# INTERNATIONAL CORADINE Rev 3 — Lion Air Pilot Logbook
+# INTERNATIONAL CORADINE Rev 3 — Photo-Only Lion Air Logbook
 
-A **Lion Air-only** pipeline for turning pilot-logbook photographs, scans, PDFs,
+A **Lion Air-only** pipeline that converts pilot-logbook photographs, scans, PDFs,
 CSV/JSON, or spreadsheets into:
 
 - `International_Coradine.xlsx`
 - `International_Coradine.pdf`
+- `manual_review.json`
 
-The project preserves readable source data, discloses reconstruction field-by-field,
-never fabricates employee IDs, and rejects identified records from other airlines.
+The shared repository is deliberately self-contained. It does **not** access or request:
+
+- a Crew Bank;
+- an Aircraft Bank;
+- a Google Sheet or Google Drive folder;
+- a private reference API;
+- a service account, server token, or hosting service.
 
 > This is a personal analytical reconstruction tool. It is not a company-confirmed,
 > regulator-verified, licensing-authority-certified, or officially certified pilot logbook.
 
-## Private reference design
+## Privacy and reference policy
 
-Shared repo users do **not** receive the Lion Air Crew or Airplane workbooks. The normal
-configuration calls a private, token-authenticated API controlled by the system owner.
+Crew names and employee IDs are transcribed only when they are readable in the supplied
+photo. Missing or unreadable crew fields remain `UNVERIFIED` or `UNREADABLE`; the software
+never searches a crew directory and never fabricates an employee ID.
 
-The repo can receive only:
+Aircraft registration and type may come from:
 
-- Crew: `employee_id` and `full_name`
-- Aircraft: `registration` and `aircraft_type`
+1. readable text in the photo; or
+2. an explicit manual value supplied by the user with `--aircraft REGISTRATION=TYPE`.
 
-The API has no bulk-list or bank-download endpoint. ATPL, rank, employment status,
-operator details, validation status, and other fields are not returned.
+The repository performs no background aircraft lookup. This keeps the shared workflow free
+from private data and external reference access.
 
-Server design is documented in [`docs/PRIVATE_REFERENCE_API.md`](docs/PRIVATE_REFERENCE_API.md).
-
-## Deploy the private API
-
-The root-level [`render.yaml`](render.yaml) defines a Docker web service for Render with a
-Singapore region, health check, CI-gated auto-deployment, and secret placeholders. No Google
-credential, user token, Crew Bank row, or Aircraft Bank row is committed to the repository.
-
-Follow [`docs/RENDER_DEPLOYMENT.md`](docs/RENDER_DEPLOYMENT.md) to connect the repository,
-enter the server-only secrets, issue one token per user, and verify the deployed API.
-
-## Install the logbook client
+## Install
 
 ```bash
 python -m venv .venv
@@ -44,51 +40,93 @@ source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 ```
 
-For strict PDF-from-Excel rendering, install LibreOffice or use Docker.
-
-## Configure a user's private API access
+Photo/PDF OCR in the standalone repository requires an OpenAI API key:
 
 ```bash
-export CORADINE_REFERENCE_API_URL="https://reference.example.com"
-export CORADINE_REFERENCE_API_TOKEN="token-issued-to-this-user"
+export OPENAI_API_KEY="..."
+export OPENAI_MODEL="gpt-5"      # optional override
 ```
 
-The token is user-specific. It is not a Google credential and cannot directly open the
-Google Sheets.
+A ChatGPT subscription and OpenAI API billing are separate. Structured CSV/JSON/XLSX input
+does not require the OpenAI API.
 
-## Inventory uploads without processing
+For strict PDF-from-Excel rendering, install LibreOffice. The optional ReportLab fallback can
+be enabled when LibreOffice is unavailable.
+
+## Simple workflow for friends
+
+Place the logbook photos in a folder, then run:
+
+```bash
+coradine photo \
+  scans/page-001.jpg scans/page-002.jpg \
+  --owner "FULL NAME OF LOGBOOK OWNER" \
+  --output-dir output
+```
+
+The `photo` command starts processing immediately. It performs OCR, reconstruction,
+validation, and Excel/PDF generation without a separate `START PROCESSING` flag.
+
+When aircraft type must be supplied manually:
+
+```bash
+coradine photo \
+  scans/page-001.jpg scans/page-002.jpg \
+  --owner "FULL NAME OF LOGBOOK OWNER" \
+  --aircraft PK-LJF=B739 \
+  --aircraft PK-LJU=B738 \
+  --output-dir output
+```
+
+The flag is repeatable. Both `PK-LJF=B739` and `LJF=B739` are accepted. Common types are
+standardized as follows:
+
+- `B738` → `B737-800NG`
+- `B739` → `B737-900ER`
+- `B38M` → `B737 MAX 8`
+
+## Manual review file
+
+Every run creates `manual_review.json`.
+
+It contains:
+
+- aircraft entries that still need registration or type;
+- an exact example of the `--aircraft` argument needed for a rerun;
+- crew fields that remain unverified because they were not readable in the source photo;
+- a clear statement that no Crew Bank or private directory was accessed.
+
+Missing information is never silently guessed. The Excel/PDF can still be generated with an
+em dash while the unresolved field remains visible in the validation and provenance sheets.
+
+## Advanced processing gate
+
+The original gated workflow remains available:
+
+```bash
+coradine process \
+  scans/page-001.jpg \
+  --owner "FULL NAME OF LOGBOOK OWNER" \
+  --start-processing \
+  --output-dir output
+```
+
+Use `coradine inventory` when only a read-only inventory is needed:
 
 ```bash
 coradine inventory scans/page-001.jpg scans/page-002.jpg --output-dir work
 ```
 
-## Process the logbook
-
-```bash
-export OPENAI_API_KEY="..."       # needed for photographs/PDFs
-export OPENAI_MODEL="gpt-5"       # optional override
-
-coradine process \
-  scans/page-001.jpg scans/page-002.pdf \
-  --owner "FULL NAME OF LION AIR PILOT" \
-  --start-processing \
-  --output-dir output
-```
-
-Structured CSV/JSON/XLSX inputs do not require the OpenAI API. Photo/PDF extraction uses
-image/file input and structured JSON output.
-
 ## Core safeguards
 
 - Exact logbook-owner name is mandatory.
-- Explicit `--start-processing` gate is required.
 - Lion Air-only guard rejects identified records from other airlines.
 - Multi-airport routes become N−1 sector rows.
 - Combined time allocation preserves the exact source-minute total.
 - Final route columns use ICAO codes.
 - `TOTAL TIME = IFR = ACTUAL IFR` for actual flights.
 - `P1 U/S ≤ Copilot Time ≤ Total Time` is validated.
-- Simulator rows cannot carry flight-operation time.
+- Missing runways, approaches, flight numbers, crew IDs, or aircraft types are not invented.
 - Every non-source decision is recorded in `DATA PROVENANCE`.
 - Remark remains blank.
 - Strict PDF mode exports from the completed workbook through LibreOffice.
@@ -101,20 +139,25 @@ image/file input and structured JSON output.
 - `AIRPORT CODE MAPPING`
 - `SOURCE INVENTORY`
 
-## Administrator-only local fallback
-
-Direct reference downloads are disabled. A system administrator may use already exported,
-private local workbooks only by changing `allow_local_admin_fallback` in a private config
-and setting `CORADINE_ALLOW_LOCAL_REFERENCE_ADMIN=true`. Do not enable this in copies shared
-with other users.
-
 ## Tests
 
 ```bash
-pip install -e ".[dev,reference-api]"
-ruff check src tests scripts
+pip install -e ".[dev]"
+ruff check src tests
 pytest -q
 ```
+
+## Sharing the repository
+
+A friend needs:
+
+1. this repository;
+2. their own logbook photo/PDF;
+3. the exact logbook-owner name;
+4. their own OpenAI API key when running photo OCR locally;
+5. optional manual registration/type values for aircraft that are not readable.
+
+They do not need access to any private bank, Google Sheet, Drive folder, token, or server.
 
 ## Pixel-accurate layout
 
@@ -125,5 +168,5 @@ accidental blank pages.
 
 ## License
 
-MIT. Source logbooks, crew directories, aircraft banks, and reference photographs remain
-subject to their owners' privacy and distribution rights.
+MIT. Source logbooks and reference photographs remain subject to their owners' privacy and
+distribution rights.

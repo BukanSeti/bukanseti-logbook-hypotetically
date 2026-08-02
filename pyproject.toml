@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "international-coradine-lion-air"
-version = "0.2.0"
-description = "Lion Air-only International Coradine Rev 3 photo-to-Excel/PDF reconstruction pipeline"
+version = "0.3.0"
+description = "Lion Air-only photo-to-Excel/PDF logbook reconstruction pipeline"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -14,20 +14,13 @@ dependencies = [
   "openpyxl>=3.1.5",
   "pydantic>=2.10",
   "PyYAML>=6.0",
-  "requests>=2.32",
   "openai>=1.60",
   "reportlab>=4.2",
   "PyMuPDF>=1.25",
 ]
 
 [project.optional-dependencies]
-reference-api = [
-  "fastapi>=0.115",
-  "google-auth>=2.38",
-  "uvicorn[standard]>=0.34",
-]
 dev = [
-  "httpx>=0.28",
   "pytest>=8.3",
   "ruff>=0.9",
 ]

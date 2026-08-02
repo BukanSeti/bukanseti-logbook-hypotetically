@@ -11,6 +11,7 @@ EM_DASH = "—"
 
 class ProvenanceClass(StrEnum):
     SOURCE = "SOURCE"
+    MANUAL = "MANUAL"
     DERIVED = "DERIVED"
     LOOKED_UP = "LOOKED UP"
     ESTIMATED = "ESTIMATED"
