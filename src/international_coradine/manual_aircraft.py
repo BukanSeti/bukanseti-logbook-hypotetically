@@ -69,9 +69,22 @@ def standardize_aircraft_type(value: str | None) -> str:
     if not value:
         return ""
 
-    original = value.strip().upper()
-    alias_key = re.sub(r"[^A-Z0-9]", "", original)
+    original = " ".join(value.strip().upper().replace("_", "-").split())
 
+    # The hyphenated Boeing model name 737-8 means MAX 8. Keep this check
+    # before compact alias matching so it is not confused with the old B7378
+    # shorthand used for a 737-800.
+    if original in {
+        "737-8",
+        "B737-8",
+        "BOEING 737-8",
+        "737 8",
+        "B737 8",
+        "BOEING 737 8",
+    }:
+        return "B38M"
+
+    alias_key = re.sub(r"[^A-Z0-9]", "", original)
     aliases = {
         # Boeing 737-900ER
         "B739": "B739",
@@ -88,9 +101,8 @@ def standardize_aircraft_type(value: str | None) -> str:
         "B737800NG": "B738",
         "BOEING737800": "B738",
         "BOEING737800NG": "B738",
-        # Boeing 737 MAX 8 / 737-8
+        # Boeing 737 MAX 8
         "B38M": "B38M",
-        "7378": "B38M",
         "737MAX8": "B38M",
         "B737MAX8": "B38M",
         "BOEING737MAX8": "B38M",
