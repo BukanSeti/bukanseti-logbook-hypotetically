@@ -15,10 +15,10 @@ def _add_output_arguments(parser: argparse.ArgumentParser) -> None:
         "--aircraft",
         action="append",
         default=[],
-        metavar="REGISTRATION=TYPE",
+        metavar="REGISTRATION=ICAO_TYPE",
         help=(
-            "Optional manual aircraft mapping. Repeat as needed, for example "
-            "--aircraft PK-LJF=B739."
+            "Optional manual aircraft mapping using an ICAO aircraft type designator. "
+            "Repeat as needed, for example --aircraft PK-LJF=B739."
         ),
     )
     parser.add_argument("--allow-pdf-fallback", action="store_true")
@@ -28,8 +28,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="coradine",
         description=(
-            "Lion Air-only photo-to-Excel/PDF logbook pipeline with no Crew Bank "
-            "or private reference API"
+            "Lion Air-only photo-to-Excel/PDF logbook pipeline with ICAO-only "
+            "aircraft type and airport output"
         ),
     )
     parser.add_argument("--config", type=Path, default=Path("config/default.yaml"))
