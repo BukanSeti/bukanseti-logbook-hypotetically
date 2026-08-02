@@ -24,6 +24,7 @@ def test_common_boeing_737_names_map_to_icao_designators():
     assert standardize_aircraft_type("B737-800NG") == "B738"
     assert standardize_aircraft_type("B737-900ER") == "B739"
     assert standardize_aircraft_type("737-8") == "B38M"
+    assert standardize_aircraft_type("B737-8") == "B38M"
 
 
 def test_other_valid_icao_aircraft_type_is_preserved():
@@ -35,6 +36,10 @@ def test_manual_aircraft_rejects_invalid_format():
         parse_aircraft_spec("PK-LJF")
 
 
-def test_expanded_unknown_aircraft_name_is_rejected():
+def test_unclear_ocr_aircraft_name_remains_unverified():
+    assert standardize_aircraft_type("UNKNOWN AIRCRAFT MODEL") == ""
+
+
+def test_explicit_unknown_aircraft_name_is_rejected():
     with pytest.raises(ValueError):
-        standardize_aircraft_type("UNKNOWN AIRCRAFT MODEL")
+        standardize_aircraft_type("UNKNOWN AIRCRAFT MODEL", strict=True)
