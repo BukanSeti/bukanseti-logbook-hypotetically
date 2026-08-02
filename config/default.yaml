@@ -13,15 +13,9 @@ processing:
   strict_pdf_from_excel: true
   allow_reportlab_fallback: false
   leave_missing_approach_unverified: true
-references:
-  mode: remote
-  required: false
-  api_url_env: CORADINE_REFERENCE_API_URL
-  api_token_env: CORADINE_REFERENCE_API_TOKEN
-  request_timeout_seconds: 15
-  allow_local_admin_fallback: false
-  crew_cache: ".cache/Lion_Air_Crew.xlsx"
-  aircraft_cache: ".cache/Lion_Air_Airplane.xlsx"
+  crew_reference_policy: source_photo_only
+  aircraft_reference_policy: source_photo_or_manual_input
 output:
   workbook_name: International_Coradine.xlsx
   pdf_name: International_Coradine.pdf
+  manual_review_name: manual_review.json
