@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
 
 from .airport_codes import AirportDirectory
 from .lion_air_guard import assert_lion_air
